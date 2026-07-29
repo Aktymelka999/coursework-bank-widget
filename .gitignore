@@ -3,22 +3,28 @@
 venv/
 env/
 
-# Кэш и временные файлы
+# Poetry
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
 .pytest_cache/
-.mypy_cache/
+.coverage
+htmlcov/
+
+# Переменные окружения и ключи
+.env
 
 # IDE
 .idea/
+.vscode/
 *.swp
 *.swo
 
-# Данные и логи (если они в корне)
+# Данные 
 data/
-logs/
-*.xlsx
 *.csv
+*.json
+
+# Лог-файлы 
+*.log
+logs/

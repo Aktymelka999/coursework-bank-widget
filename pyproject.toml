@@ -24,7 +24,22 @@ autoflake = "^2.3.3"
 pyupgrade = "^3.21.2"
 flake8-bugbear = "^25.11.29"
 requests-mock = "^1.12.1"
+autopep8 = "^2.3.2"
+ruff = "^0.16.5"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 140
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "Q"]
+ignore = []
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+
+[tool.flake8]
+max-line-length = 120

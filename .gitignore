@@ -24,6 +24,7 @@ htmlcov/
 data/
 *.csv
 *.json
+data/transactions.xlsx
 
 # Лог-файлы 
 *.log

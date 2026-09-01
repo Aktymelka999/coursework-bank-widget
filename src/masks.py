@@ -1,4 +1,18 @@
-from .logger_config import logger_masks
+import logging
+
+# Пытаемся импортировать готовый логгер. Если не получается — создаём свой.
+try:
+    from .logger_config import logger_masks
+except ImportError:
+    logger_masks = logging.getLogger("masks")
+    if not logger_masks.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s [%(name)s] [%(levelname)s] %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger_masks.addHandler(handler)
+        logger_masks.setLevel(logging.DEBUG)
 
 
 def mask_card_number(card_full: str) -> str:

@@ -1,17 +1,15 @@
-from datetime import datetime
-import pandas as pd
+
+from datetime import datetime as real_datetime
+import datetime as dt_module  # чтобы не было конфликта имён
 from pathlib import Path
 from typing import Optional
+
+import pandas as pd
 
 from .logger_config import logger_utils
 
 
 def load_transactions(file_path: str) -> pd.DataFrame:
-    """
-    Универсальная загрузка Excel-файла с транзакциями.
-    Делает приведение типов, очистку, сортировку, расчёт last_digits.
-    Если файл не найден — выбрасывает FileNotFoundError (это для явного контроля).
-    """
     path = Path(file_path)
     logger_utils.debug(f"Попытка загрузки файла: {path}")
 
@@ -20,12 +18,11 @@ def load_transactions(file_path: str) -> pd.DataFrame:
         raise FileNotFoundError(f"Файл не найден: {file_path}")
 
     df = pd.read_excel(path, engine="openpyxl")
-
     logger_utils.info(f"Загружено строк: {len(df)}")
 
-    if "Категория" in df.columns:
+    if "Категория" in df.columns and len(df) > 0:
         logger_utils.info(
-            f"Проверка: в файле есть категория '{df['Категория'].iloc}' и '{df['Категория'].iloc[-1]}'"
+            f"Проверка: в файле есть категория '{df['Категория'].iloc[0]}' и '{df['Категория'].iloc[-1]}'"
         )
 
     date_cols = ["Дата операции", "Дата платежа"]
@@ -80,7 +77,6 @@ def load_transactions(file_path: str) -> pd.DataFrame:
 
 
 def load_transactions_dummy() -> pd.DataFrame:
-    """Тестовые данные, если Excel-файл отсутствует."""
     logger_utils.warning("Используется dummy-данные вместо Excel-файла")
     data = [
         {
@@ -124,7 +120,7 @@ def load_transactions_dummy() -> pd.DataFrame:
     return df
 
 
-def load_transactions_data():
+def load_transactions_data() -> pd.DataFrame:
     current_dir = Path(__file__).resolve().parent
     project_root = current_dir.parent
     data_path = project_root / "data" / "operations.xlsx"
@@ -139,12 +135,10 @@ def load_transactions_data():
     if missing_cols:
         raise ValueError(f"В файле отсутствуют обязательные колонки: {missing_cols}")
 
-    df["Сумма операции"] = pd.to_numeric(df["Сумма операции"], errors="coerce").fillna(
-        0
+    df["Сумма операции"] = (
+        pd.to_numeric(df["Сумма операции"], errors="coerce").fillna(0)
     )
-
     df["Дата операции"] = pd.to_datetime(df["Дата операции"], errors="coerce")
-
     return df
 
 
@@ -152,15 +146,15 @@ def get_greeting(date_time_str: Optional[str] = None) -> str:
     logger_utils.debug("Вызвана функция get_greeting")
 
     if date_time_str is None:
-        now = datetime.now()
+        now = real_datetime.now()
     else:
         try:
-            now = datetime.strptime(date_time_str, "%Y-%m-%d %H:%M:%S")
+            now = real_datetime.strptime(date_time_str, "%Y-%m-%d %H:%M:%S")
         except ValueError:
             logger_utils.warning(
                 "Неверный формат даты для приветствия, используем текущее время"
             )
-            now = datetime.now()
+            now = real_datetime.now()
 
     hour = now.hour
     if 5 <= hour < 12:

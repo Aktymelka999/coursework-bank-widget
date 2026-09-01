@@ -1,6 +1,5 @@
 
-
 [flake8]
+exclude = .venv_old,__pycache__,tests,migrations,.git,venv,.venv
 max-line-length = 120
-exclude = .git,__pycache__,tests,.venv,data
 ignore = E203,W503

@@ -16,7 +16,6 @@ def _setup_logger(name: str, filename: str) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)  # не ниже DEBUG
 
-
     fh = logging.FileHandler(log_dir / filename, mode='w', encoding='utf-8')
     fh.setFormatter(formatter)
     fh.setLevel(logging.DEBUG)

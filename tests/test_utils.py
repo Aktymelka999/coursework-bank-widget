@@ -1,17 +1,11 @@
 from datetime import datetime as real_datetime
-from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from src.logger_config import logger_utils
-from src.utils import (
-    get_greeting,
-    load_transactions,
-    load_transactions_data,
-    load_transactions_dummy,
-)
+from src.utils import get_greeting, load_transactions
 
 
 class TestGetGreeting:
@@ -36,7 +30,6 @@ class TestGetGreeting:
         assert get_greeting() == 'Доброй ночи!'
 
     def test_get_greeting_custom_valid_time(self):
-
         assert get_greeting('2026-07-31 10:20:30') == 'Доброе утро!'
         assert get_greeting('2026-07-31 15:00:00') == 'Добрый день!'
         assert get_greeting('2026-07-31 21:10:00') == 'Добрый вечер!'
@@ -106,97 +99,3 @@ class TestLoadTransactions:
 
         result = load_transactions('test_file.xlsx')
         assert result['Дата операции'].iloc[0] > result['Дата операции'].iloc[-1]
-
-
-class TestLoadTransactionsDummy:
-    def test_load_transactions_dummy_returns_dataframe(self):
-        df = load_transactions_dummy()
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 5
-        assert 'Дата операции' in df.columns
-        assert pd.api.types.is_datetime64_any_dtype(df['Дата операции'])
-
-    def test_load_transactions_dummy_logging(self):
-        with patch.object(logger_utils, 'warning') as mock_warning:
-            load_transactions_dummy()
-            mock_warning.assert_called_once_with(
-                'Используется dummy-данные вместо Excel-файла'
-            )
-
-
-class TestLoadTransactionsData:
-    @pytest.fixture
-    def temp_project_structure(self, tmp_path: Path):
-        data_dir = tmp_path / 'data'
-        data_dir.mkdir(exist_ok=True)
-        file_path = data_dir / 'operations.xlsx'
-
-        df = pd.DataFrame(
-            {
-                'Сумма операции': [100, 200],
-                'Категория': ['Еда', 'Транспорт'],
-                'Дата операции': pd.to_datetime(['2023-01-01', '2023-01-02']),
-            }
-        )
-        df.to_excel(file_path, index=False)
-        yield file_path
-
-    @patch('pathlib.Path.resolve')
-    @patch('pandas.read_excel')
-    def test_load_transactions_data_success(
-        self, mock_read_excel, mock_resolve, temp_project_structure
-    ):
-        base_path = temp_project_structure.parent.parent
-
-        mock_resolve.return_value = base_path / 'src' / '__init__.py'
-
-        expected_df = pd.DataFrame({
-            'Сумма операции': [100, 200],
-            'Категория': ['Еда', 'Транспорт'],
-            'Дата операции': pd.to_datetime(['2023-01-01', '2023-01-02']),
-        })
-        mock_read_excel.return_value = expected_df
-
-        df = load_transactions_data()
-
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 2
-        assert 'Сумма операции' in df.columns
-        assert 'Категория' in df.columns
-        assert 'Дата операции' in df.columns
-
-        assert mock_read_excel.call_count == 1
-
-        call_args = mock_read_excel.call_args_list[0][0][0]
-        assert isinstance(call_args, (str, Path)), f'Ожидался Path/str, но получили {type(call_args)}'
-
-    @patch('pathlib.Path.resolve')
-    def test_load_transactions_data_missing_file(
-        self, mock_resolve, tmp_path: Path
-    ):
-        base_path = tmp_path
-        mock_resolve.return_value = base_path / 'src' / '__init__.py'
-
-        with pytest.raises(FileNotFoundError):
-            load_transactions_data()
-
-    @patch('pathlib.Path.resolve')
-    @patch('pandas.read_excel')
-    def test_load_transactions_data_missing_columns(
-        self, mock_read_excel, mock_resolve, tmp_path: Path
-    ):
-        data_dir = tmp_path / 'data'
-        data_dir.mkdir(exist_ok=True)
-        file_path = data_dir / 'operations.xlsx'
-
-        df_bad = pd.DataFrame({'Сумма': [100], 'Категория': ['Еда']})
-        df_bad.to_excel(file_path, index=False)
-
-        base_path = tmp_path
-        mock_resolve.return_value = base_path / 'src' / '__init__.py'
-        mock_read_excel.return_value = df_bad
-
-        with pytest.raises(ValueError) as exc_info:
-            load_transactions_data()
-
-        assert 'В файле отсутствуют обязательные колонки' in str(exc_info.value)

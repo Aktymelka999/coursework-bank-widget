@@ -3,7 +3,6 @@ from pathlib import Path
 from src.logger_config import logger_utils
 from src.reports import (
     generate_cashback_json,
-    generate_main_page_json,
     generate_report_spending_by_category_json,
     generate_report_spending_by_weekday_json,
     generate_report_spending_by_workday_type_json,
@@ -11,6 +10,7 @@ from src.reports import (
     generate_search_json,
     generate_transfers_to_individuals_json,
 )
+from src.views import generate_main_page_json
 
 
 def main() -> None:
@@ -24,14 +24,16 @@ def main() -> None:
     settings_file = str(data_path / 'user_settings.json')
 
     if not data_path.exists():
-
         logger_utils.error(
-            f'Папка {str(data_path)} не найдена. Сначала запусти scripts/create_test_data.py'
+            f'Папка {data_path} не найдена. '
+            'Сначала запусти scripts/create_test_data.py'
         )
         return
 
     main_page = generate_main_page_json(
-        current_datetime_str, transactions_file=transactions_file
+        current_datetime_str,
+        transactions_file=transactions_file,
+        settings_file=settings_file,
     )
     print('\n=== Main Page ===')
     print(main_page)

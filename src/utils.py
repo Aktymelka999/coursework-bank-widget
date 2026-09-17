@@ -1,11 +1,17 @@
-
+import json
 from datetime import datetime as real_datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional, Union, TypedDict
 
 import pandas as pd
+import requests
 
 from .logger_config import logger_utils
+
+
+class StockPriceItem(TypedDict):
+    stock: str
+    price: float
 
 
 def load_transactions(file_path: str) -> pd.DataFrame:
@@ -18,11 +24,6 @@ def load_transactions(file_path: str) -> pd.DataFrame:
 
     df = pd.read_excel(path, engine='openpyxl')
     logger_utils.info(f'Загружено строк: {len(df)}')
-
-    if 'Категория' in df.columns and len(df) > 0:
-        logger_utils.info(
-            f"Проверка: в файле есть категория '{df['Категория'].iloc[0]}' и '{df['Категория'].iloc[-1]}'"
-        )
 
     date_cols = ['Дата операции', 'Дата платежа']
     for col in date_cols:
@@ -75,72 +76,6 @@ def load_transactions(file_path: str) -> pd.DataFrame:
     return df
 
 
-def load_transactions_dummy() -> pd.DataFrame:
-    logger_utils.warning('Используется dummy-данные вместо Excel-файла')
-    data = [
-        {
-            'Дата операции': '2023-10-01',
-            'Сумма платежа': 1200.0,
-            'Категория': 'Продукты',
-            'Описание': 'Пятёрочка',
-            'Карта': 'Black',
-        },
-        {
-            'Дата операции': '2023-10-02',
-            'Сумма платежа': 800.0,
-            'Категория': 'Такси',
-            'Описание': 'Яндекс Такси',
-            'Карта': 'Platinum',
-        },
-        {
-            'Дата операции': '2023-10-03',
-            'Сумма платежа': 2500.0,
-            'Категория': 'Электроника',
-            'Описание': 'М.Видео',
-            'Карта': 'Black',
-        },
-        {
-            'Дата операции': '2023-10-04',
-            'Сумма платежа': 300.0,
-            'Категория': 'Наличные',
-            'Описание': 'Снятие наличных',
-            'Карта': 'Platinum',
-        },
-        {
-            'Дата операции': '2023-10-05',
-            'Сумма платежа': 5000.0,
-            'Категория': 'Пополнение счёта',
-            'Описание': 'Перевод себе',
-            'Карта': 'Black',
-        },
-    ]
-    df = pd.DataFrame(data)
-    df['Дата операции'] = pd.to_datetime(df['Дата операции'])
-    return df
-
-
-def load_transactions_data() -> pd.DataFrame:
-    current_dir = Path(__file__).resolve().parent
-    project_root = current_dir.parent
-    data_path = project_root / 'data' / 'operations.xlsx'
-
-    if not data_path.exists():
-        raise FileNotFoundError(f'Файл не найден: {data_path}')
-
-    df = pd.read_excel(data_path)
-
-    required_cols = ['Сумма операции', 'Категория', 'Дата операции']
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f'В файле отсутствуют обязательные колонки: {missing_cols}')
-
-    df['Сумма операции'] = (
-        pd.to_numeric(df['Сумма операции'], errors='coerce').fillna(0)
-    )
-    df['Дата операции'] = pd.to_datetime(df['Дата операции'], errors='coerce')
-    return df
-
-
 def get_greeting(date_time_str: Optional[str] = None) -> str:
     logger_utils.debug('Вызвана функция get_greeting')
 
@@ -167,3 +102,149 @@ def get_greeting(date_time_str: Optional[str] = None) -> str:
 
     logger_utils.info(f'Сгенерировано приветствие: {greeting}')
     return greeting
+
+
+def get_cards_info(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Возвращает список карт: последние 4 цифры, общие траты, кешбэк."""
+    if 'last_digits' not in df.columns:
+        return []
+
+    cards: List[Dict[str, Any]] = []
+    spent_col = 'Сумма операции'
+    cashback_col = 'Кешбэк'
+
+    for digits, group in df[df['last_digits'].notna()].groupby('last_digits'):
+        spent = 0.0
+        if spent_col in group.columns:
+            spent = float(
+                group[spent_col].apply(
+                    lambda x: abs(x) if pd.notna(x) and x < 0 else 0
+                ).sum()
+            )
+
+        cashback = 0.0
+        if cashback_col in group.columns:
+            cashback = float(group[cashback_col].fillna(0).sum())
+
+        cards.append(
+            {
+                'last_digits': digits,
+                'total_spent': round(spent, 2),
+                'cashback': round(cashback, 2),
+            }
+        )
+    return cards
+
+
+def get_top_transactions(df: pd.DataFrame, n: int = 5) -> List[Dict[str, Any]]:
+    """Возвращает топ-N транзакций по абсолютной сумме."""
+    if 'Сумма операции' not in df.columns:
+        return []
+
+    top = df.reindex(
+        df['Сумма операции'].abs().sort_values(ascending=False).index
+    ).head(n)
+
+    result: List[Dict[str, Any]] = []
+    for _, row in top.iterrows():
+        result.append(
+            {
+                'date': str(row.get('Дата операции', '')),
+                'amount': round(float(abs(row['Сумма операции'])), 2),
+                'category': str(row.get('Категория', '')),
+                'description': str(row.get('Описание', '')),
+            }
+        )
+    return result
+
+
+def get_currency_rates(settings_file: str) -> List[Dict[str, Any]]:
+    """Получает курсы валют через API на основе пользовательских настроек."""
+    currencies = _load_settings(settings_file, 'user_currencies', ['USD', 'EUR'])
+    rates: List[Dict[str, Any]] = []
+    for currency in currencies:
+        try:
+            response = requests.get(
+                f'https://api.exchangerate-api.com/v4/latest/{currency}',
+                timeout=5,
+            )
+            data: Dict[str, Any] = response.json()
+            rub_rate = data['rates'].get('RUB')
+            if rub_rate is not None:
+                rates.append({'currency': currency, 'rate': round(rub_rate, 2)})
+        except Exception as e:
+            logger_utils.warning(f'Не удалось получить курс для {currency}: {e}')
+    return rates
+
+
+def _load_settings(settings_file: str, key: str, default: List[str]) -> List[str]:
+    """Читает значение из файла настроек."""
+    try:
+        with open(settings_file, encoding='utf-8') as f:
+            settings = json.load(f)
+        value = settings.get(key, default)
+        # Гарантируем, что возвращаем именно List[str], даже если в JSON попало что-то другое
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        return default
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger_utils.warning(f'Не удалось загрузить настройки из {settings_file}')
+        return default
+
+
+def get_stock_prices(settings_file: str) -> List[StockPriceItem]:
+    """Получает цены акций через API на основе пользовательских настроек."""
+    stocks = _load_settings(settings_file, 'user_stocks', [])
+    prices: List[StockPriceItem] = []
+
+    for stock in stocks:
+        try:
+            response = requests.get(
+                f'https://query1.finance.yahoo.com/v8/finance/chart/{stock}',
+                params={'interval': '1d', 'range': '1d'},
+                timeout=5,
+            )
+            data: Dict[str, Any] = response.json()
+
+            chart = data.get('chart')
+            if not isinstance(chart, dict):
+                logger_utils.warning(f'Неверный формат ответа для {stock}: нет поля chart')
+                continue
+
+            result_list = chart.get('result')
+            if not isinstance(result_list, list) or len(result_list) == 0:
+                logger_utils.warning(f'Нет результатов для {stock}')
+                continue
+
+            first_result = result_list[0]
+            if not isinstance(first_result, dict):
+                continue
+
+            meta = first_result.get('meta')
+            if not isinstance(meta, dict):
+                logger_utils.warning(f'Нет meta для {stock}')
+                continue
+
+            price_raw = meta.get('regularMarketPrice')
+            if price_raw is None:
+                logger_utils.warning(f'Не удалось получить цену для {stock}: regularMarketPrice отсутствует')
+                continue
+
+            try:
+                price_value = float(price_raw)
+            except (TypeError, ValueError):
+                logger_utils.warning(f'Некорректное значение цены для {stock}: {price_raw}')
+                continue
+
+            price_rounded = round(price_value, 2)
+
+            item: StockPriceItem = {
+                'stock': str(stock),
+                'price': price_rounded,
+            }
+            prices.append(item)
+
+        except Exception as e:
+            logger_utils.warning(f'Не удалось получить цену для {stock}: {e}')
+
+    return prices
